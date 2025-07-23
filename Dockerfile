@@ -1,11 +1,7 @@
-FROM debian:12-slim
+FROM ubuntu:22.04
 
 # 合并所有安装操作到单个 RUN 层减少镜像体积
 RUN set -eux; \
-    # 创建快捷命令
-    echo '#!/bin/bash\nphp artisan "$@"' > /usr/bin/art && \
-    chmod +x /usr/bin/art; \
-    \
     # 更新系统并安装基础工具
     apt update; \
     apt install -y --no-install-recommends wget ca-certificates; \
@@ -54,7 +50,7 @@ RUN set -eux; \
     # 安装 Composer
     wget -qO /usr/bin/composer https://mirrors.aliyun.com/composer/composer.phar; \
     chmod +x /usr/bin/composer; \
-    composer config -g repo.packagist composer https://mirrors.aliyun.com/composer/
+    composer config -g repo.packagist composer https://mirrors.aliyun.com/composer/;
 
 # 最后复制配置文件 (单独层便于修改)
 COPY php.ini /etc/php/8.4/cli/conf.d/99-custom.ini
