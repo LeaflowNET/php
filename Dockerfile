@@ -105,6 +105,7 @@ RUN set -eux; \
 # https://httpd.apache.org/docs/2.4/mod/mod_remoteip.html
 	a2enmod remoteip; \
 	{ \
+		echo 'RemoteIPHeader X-Real-IP'; \
 		echo 'RemoteIPHeader X-Forwarded-For'; \
 # these IP ranges are reserved for "private" use and should thus *usually* be safe inside Docker
 		echo 'RemoteIPInternalProxy 10.0.0.0/8'; \
