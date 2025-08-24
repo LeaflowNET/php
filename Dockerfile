@@ -39,6 +39,9 @@ RUN set -ex; \
 		intl \
 		mysqli \
 		zip \
+		pdo pdo_mysql pdo_pgsql \
+	; \
+	docker-php-ext-enable pdo pdo_mysql pdo_pgsql; \ 
 	; \
 # https://pecl.php.net/package/imagick and redis
 	pecl install imagick-3.8.0; \
