@@ -1,4 +1,4 @@
-FROM debian:12-slim
+FROM debian:13-slim
 
 # 定义 PHP 版本
 ARG PHP_VERSION=8.4

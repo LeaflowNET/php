@@ -50,11 +50,11 @@ apt install -y --no-install-recommends \
 apt install -y --no-install-recommends nginx
 
 # 安装构建依赖 (仅编译时使用)
-apt install -y --no-install-recommends php${PHP_VERSION}-dev build-essential php-pear libgmp-dev libicu-dev
+apt install -y --no-install-recommends php${PHP_VERSION}-dev build-essential php-pear libgmp-dev libicu-dev librdkafka-dev
 
 # 安装 PECL 扩展
 pecl channel-update pecl.php.net
-MAKEFLAGS="-j $(nproc)" pecl install swoole
+MAKEFLAGS="-j $(nproc)" pecl install swoole grpc rdkafka
 
 # 移除构建依赖和缓存
 strip --strip-debug /usr/lib/php/*/*.so
