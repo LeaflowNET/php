@@ -7,8 +7,12 @@ on:
       - main
     paths:
       - Dockerfile
+      - Dockerfile.php83
+      - Dockerfile.php84
+      - Dockerfile.php85
       - Caddyfile
       - php.ini
+      - docker/php-extensions/**
       - .github/workflows/build-ghcr.yml
 
 permissions:
@@ -27,11 +31,11 @@ jobs:
       matrix:
         include:
           - php_version: "8.3"
-            frankenphp_tag: "1.3-php8.3-bookworm"
+            dockerfile: ./Dockerfile.php83
           - php_version: "8.4"
-            frankenphp_tag: "1.3-php8.4-bookworm"
+            dockerfile: ./Dockerfile.php84
           - php_version: "8.5"
-            frankenphp_tag: "php8.5-bookworm"
+            dockerfile: ./Dockerfile.php85
 
     steps:
       - name: Checkout
@@ -54,9 +58,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.IMAGE_REPO }}:php${{ matrix.php_version }}
           build-args: |
-            FRANKENPHP_TAG=${{ matrix.frankenphp_tag }}
+            FRANKENPHP_REPO=dunglas/frankenphp
