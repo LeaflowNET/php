@@ -1,7 +1,7 @@
-ARG FRANKENPHP_SERIES=1.3
-ARG PHP_VERSION=8.4
+ARG FRANKENPHP_REPO=dunglas/frankenphp
+ARG FRANKENPHP_TAG=1.3-php8.4-bookworm
 
-FROM dunglas/frankenphp:${FRANKENPHP_SERIES}-php${PHP_VERSION}-bookworm
+FROM ${FRANKENPHP_REPO}:${FRANKENPHP_TAG}
 
 ARG APP_USER=appuser
 ARG PHP_EXTENSIONS="apcu bcmath bz2 curl dom exif fileinfo gd gmp grpc intl mbstring memcached mongodb mysqli opcache pdo_mysql pdo_pgsql pdo_sqlite pgsql rdkafka redis swoole zip"
