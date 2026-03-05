@@ -1,15 +1,40 @@
-FROM debian:13-slim
-
-# 定义 PHP 版本
+ARG FRANKENPHP_SERIES=1.3
 ARG PHP_VERSION=8.4
-ENV PHP_VERSION=${PHP_VERSION}
 
-# 复制并执行安装脚本
-COPY setup.sh /setup.sh
-RUN chmod +x /setup.sh && /setup.sh && rm /setup.sh
+FROM dunglas/frankenphp:${FRANKENPHP_SERIES}-php${PHP_VERSION}-bookworm
 
-# 最后复制配置文件 (单独层便于修改)
-COPY php.ini /etc/php/${PHP_VERSION}/cli/conf.d/99-custom.ini
+ARG APP_USER=appuser
+ARG PHP_EXTENSIONS="apcu bcmath bz2 curl dom exif fileinfo gd gmp grpc intl mbstring memcached mongodb mysqli opcache pdo_mysql pdo_pgsql pdo_sqlite pgsql rdkafka redis swoole zip"
 
-# 默认启动 Nginx 和 PHP-FPM 如果没有传入命令
-CMD ["/bin/sh", "-c", "php-fpm${PHP_VERSION} -D && nginx -g 'daemon off;'"]
+ENV SERVER_NAME=:80
+ENV SERVER_ROOT=public/
+ENV GODEBUG=cgocheck=0
+ENV IPE_PROCESSOR_COUNT=1
+ENV DEFAULT_HEALTHCHECK_PATH=/__builtin_healthcheck_disabled__
+ENV HEALTHCHECK_PATH=
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends libcap2-bin; \
+    install-php-extensions ${PHP_EXTENSIONS}; \
+    cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"; \
+    mkdir -p /etc/caddy/Caddyfile.d; \
+    if ! id -u "$APP_USER" >/dev/null 2>&1; then \
+        useradd --create-home --shell /usr/sbin/nologin "$APP_USER"; \
+    fi; \
+    setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp; \
+    chown -R "$APP_USER:$APP_USER" /app /config/caddy /data/caddy /etc/caddy/Caddyfile.d; \
+    apt-get purge -y --auto-remove libcap2-bin; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY php.ini /usr/local/etc/php/conf.d/99-custom.ini
+
+WORKDIR /app
+USER ${APP_USER}
+
+EXPOSE 80 443 443/udp
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 CMD ["php", "-r", "$path=getenv('HEALTHCHECK_PATH'); if(!$path){exit(0);} $ctx=stream_context_create(['http'=>['timeout'=>2]]); $resp=@file_get_contents('http://127.0.0.1'.$path,false,$ctx); exit($resp===false?1:0);"]
