@@ -22,7 +22,7 @@ env:
 jobs:
   build:
     name: Build php${{ matrix.php_version }}
-    runs-on: leaflow-cloud
+    runs-on: leaflow-php
     strategy:
       fail-fast: false
       matrix:
