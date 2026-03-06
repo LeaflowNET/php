@@ -5,11 +5,12 @@ FROM ${FRANKENPHP_REPO}:${FRANKENPHP_TAG}
 
 ARG APP_USER=appuser
 ARG PHP_EXTENSIONS=
+ARG IPE_PROCESSOR_COUNT=
+ARG IPE_MAKEFLAGS=
 
 ENV SERVER_NAME=:80
 ENV SERVER_ROOT=public/
 ENV GODEBUG=cgocheck=0
-ENV IPE_PROCESSOR_COUNT=1
 ENV DEFAULT_HEALTHCHECK_PATH=/__builtin_healthcheck_disabled__
 ENV HEALTHCHECK_PATH=
 
@@ -19,6 +20,8 @@ COPY docker/php-extensions/php83.list /tmp/php-extensions.list
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends libcap2-bin; \
+    if [ -n "${IPE_PROCESSOR_COUNT}" ]; then export IPE_PROCESSOR_COUNT="${IPE_PROCESSOR_COUNT}"; fi; \
+    if [ -n "${IPE_MAKEFLAGS}" ]; then export MAKEFLAGS="${IPE_MAKEFLAGS}"; fi; \
     php_extensions="${PHP_EXTENSIONS:-$(tr '\n' ' ' < /tmp/php-extensions.list)}"; \
     install-php-extensions ${php_extensions}; \
     rm -f /tmp/php-extensions.list; \

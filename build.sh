@@ -24,6 +24,8 @@ show_help() {
   echo -e "  PLATFORMS           构建平台 (默认: linux/amd64,linux/arm64)"
   echo -e "  BUILD_OUTPUT        buildx 输出模式 (默认: --push)"
   echo -e "  PHP_EXTENSIONS      覆盖 Dockerfile 内置扩展列表"
+  echo -e "  IPE_PROCESSOR_COUNT install-php-extensions 编译并发数"
+  echo -e "  IPE_MAKEFLAGS       透传给 make 的参数，如 '-j64'"
   echo -e ""
   echo -e "示例:"
   echo -e "  ${GREEN}$0 8.4${NC}"
@@ -61,6 +63,8 @@ FRANKENPHP_TAG_85="${FRANKENPHP_TAG_85:-php8.5-bookworm}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 BUILD_OUTPUT="${BUILD_OUTPUT:---push}"
 PHP_EXTENSIONS="${PHP_EXTENSIONS:-}"
+IPE_PROCESSOR_COUNT="${IPE_PROCESSOR_COUNT:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
+IPE_MAKEFLAGS="${IPE_MAKEFLAGS:-}"
 
 if ! docker info >/dev/null 2>&1; then
   echo -e "${RED}错误: Docker 守护进程未运行${NC}"
@@ -106,6 +110,10 @@ echo -e "${GREEN}仓库: ${YELLOW}${REPO}${NC}"
 echo -e "${GREEN}目标版本: ${YELLOW}${VERSIONS[*]}${NC}"
 echo -e "${GREEN}平台: ${YELLOW}${PLATFORMS}${NC}"
 echo -e "${GREEN}基础仓库: ${YELLOW}${FRANKENPHP_BASE_REPO}${NC}"
+echo -e "${GREEN}编译并发: ${YELLOW}${IPE_PROCESSOR_COUNT}${NC}"
+if [[ -n "${IPE_MAKEFLAGS}" ]]; then
+  echo -e "${GREEN}MAKEFLAGS: ${YELLOW}${IPE_MAKEFLAGS}${NC}"
+fi
 
 for version in "${VERSIONS[@]}"; do
   case "${version}" in
@@ -133,10 +141,15 @@ for version in "${VERSIONS[@]}"; do
     --file "${dockerfile}"
     --build-arg "FRANKENPHP_REPO=${FRANKENPHP_BASE_REPO}"
     --build-arg "FRANKENPHP_TAG=${frankenphp_tag}"
+    --build-arg "IPE_PROCESSOR_COUNT=${IPE_PROCESSOR_COUNT}"
   )
 
   if [[ -n "${PHP_EXTENSIONS}" ]]; then
     build_args+=(--build-arg "PHP_EXTENSIONS=${PHP_EXTENSIONS}")
+  fi
+
+  if [[ -n "${IPE_MAKEFLAGS}" ]]; then
+    build_args+=(--build-arg "IPE_MAKEFLAGS=${IPE_MAKEFLAGS}")
   fi
 
   docker buildx build \
