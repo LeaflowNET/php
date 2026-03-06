@@ -20,7 +20,7 @@ COPY docker/php-extensions/php84.list /tmp/php-extensions.list
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libcap2-bin; \
+    apt-get install -y --no-install-recommends gettext-base libcap2-bin; \
     if [ -n "${IPE_PROCESSOR_COUNT}" ]; then export IPE_PROCESSOR_COUNT="${IPE_PROCESSOR_COUNT}"; fi; \
     if [ -n "${IPE_MAKEFLAGS}" ]; then export MAKEFLAGS="${IPE_MAKEFLAGS}"; fi; \
     php_extensions="${PHP_EXTENSIONS:-$(tr '\n' ' ' < /tmp/php-extensions.list)}"; \
@@ -37,10 +37,8 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY php.ini /usr/local/etc/php/conf.d/99-custom.ini
-COPY docker/entrypoint.sh /usr/local/bin/runtime-entrypoint
-
-RUN chmod +x /usr/local/bin/runtime-entrypoint
+COPY docker/php-runtime.ini.template /etc/php-runtime.ini.template
+COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/runtime-entrypoint
 
 WORKDIR /app
 USER ${APP_USER}

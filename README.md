@@ -39,16 +39,20 @@
   - `CADDY_GLOBAL_OPTIONS`: Caddy 全局块注入
   - `CADDY_EXTRA_CONFIG`: 顶层附加配置注入
   - `CADDY_SERVER_EXTRA_DIRECTIVES`: server 块附加指令
-  - 以上 4 项均支持 `*_FILE`（例如 `CADDY_SERVER_EXTRA_DIRECTIVES_FILE`）
 - **PHP 运行时**
   - `PHP_UPLOAD_MAX_FILESIZE` / `PHP_POST_MAX_SIZE` / `PHP_MEMORY_LIMIT`
-  - `PHP_OPCACHE_*` 系列（含 preload / jit）
+  - `PHP_OPCACHE_ENABLE` / `PHP_OPCACHE_ENABLE_CLI`
+  - `PHP_OPCACHE_MEMORY_CONSUMPTION` / `PHP_OPCACHE_INTERNED_STRINGS_BUFFER` / `PHP_OPCACHE_MAX_ACCELERATED_FILES` / `PHP_OPCACHE_VALIDATE_TIMESTAMPS`
+  - `PHP_OPCACHE_JIT`（默认 `tracing`，可设 `disable` 关闭）/ `PHP_OPCACHE_JIT_BUFFER_SIZE`（默认 `64M`）
+  - `PHP_OPCACHE_PRELOAD` / `PHP_OPCACHE_PRELOAD_USER`
+  - `PHP_APCU_SHM_SIZE`（默认 `32M`）
   - `PHP_RUNTIME_INI_APPEND_FILE` / `PHP_RUNTIME_INI_APPEND`
   - `PHP_INI_SCAN_DIR`: 附加 ini 扫描目录
 - **Session**
   - `PHP_SESSION_REDIS_ENABLED`: 开关（`1/true/on` 启用 Redis）
   - `PHP_SESSION_REDIS_HOST/PORT/DB/TIMEOUT/PREFIX/AUTH`
   - `PHP_SESSION_REDIS_SAVE_PATH`: 完整 save_path 覆盖
+  - `PHP_SESSION_REDIS_SAVE_PATH_FILE`: 从文件读取 save_path
   - `PHP_SESSION_REDIS_AUTH_FILE`: 从文件读取密码
 
 ## Caddy 配置机制
@@ -56,7 +60,6 @@
 - 镜像内固定主模板：`/etc/caddy/Caddyfile`
 - 主模板通过占位符读取环境变量：`CADDY_GLOBAL_OPTIONS`、`FRANKENPHP_CONFIG`、`CADDY_EXTRA_CONFIG`、`CADDY_SERVER_EXTRA_DIRECTIVES`
 - 额外覆盖入口：`/etc/caddy/Caddyfile.d/*.caddyfile`
-- 支持 `*_FILE` 方式注入多行配置（如 `CADDY_SERVER_EXTRA_DIRECTIVES_FILE`），便于 K8s ConfigMap/Secret
 
 Early Hints 建议放在应用层（PHP 发送 `103`）：
 
@@ -82,17 +85,18 @@ headers_send(103);
 - `PHP_OPCACHE_ENABLE`（默认 `1`）
 - `PHP_OPCACHE_ENABLE_CLI`（默认 `0`）
 - `PHP_OPCACHE_MEMORY_CONSUMPTION`（默认按 cgroup 内存自动估算）
-- `PHP_OPCACHE_INTERNED_STRINGS_BUFFER`（默认按 cgroup 内存自动估算）
+- `PHP_OPCACHE_INTERNED_STRINGS_BUFFER`（默认 `32`，单位 MB）
 - `PHP_OPCACHE_MAX_ACCELERATED_FILES`（默认 `65407`）
 - `PHP_OPCACHE_VALIDATE_TIMESTAMPS`（默认 `0`，生产建议保持）
-- `PHP_OPCACHE_REVALIDATE_FREQ`（默认 `0`）
-- `PHP_OPCACHE_SAVE_COMMENTS`（默认 `1`）
-- `PHP_OPCACHE_JIT`（默认 `disable`）
-- `PHP_OPCACHE_JIT_BUFFER_SIZE`（默认 `0`）
+- `PHP_OPCACHE_JIT`（默认 `tracing`，可设 `disable` 关闭 JIT）
+- `PHP_OPCACHE_JIT_BUFFER_SIZE`（默认 `64M`）
 - `PHP_OPCACHE_PRELOAD`（默认空）
 - `PHP_OPCACHE_PRELOAD_USER`（默认 `appuser`）
+- `PHP_APCU_SHM_SIZE`（默认 `32M`）
 - `PHP_RUNTIME_INI_APPEND_FILE`（默认空，挂载文件并追加到运行时 ini）
 - `PHP_RUNTIME_INI_APPEND`（默认空，直接追加 ini 文本）
+
+运行时 ini 由 `docker/php-runtime.ini.template` 通过 `envsubst` 渲染生成，所有变量均可通过对应环境变量覆盖。需要模板未覆盖的低层参数时，使用 `PHP_RUNTIME_INI_APPEND_FILE` 或 `PHP_RUNTIME_INI_APPEND` 追加。
 
 示例：
 
@@ -117,6 +121,7 @@ docker run --rm -p 80:80 \
 - `PHP_SESSION_REDIS_PREFIX`（可选）
 - `PHP_SESSION_REDIS_TIMEOUT`（默认 `2.5`）
 - `PHP_SESSION_REDIS_SAVE_PATH`（可选，设置后优先于 host/port 组合）
+- `PHP_SESSION_REDIS_SAVE_PATH_FILE`（可选，优先用于 Secret 文件注入）
 - `PHP_SESSION_REDIS_AUTH_FILE`（可选，优先用于 Secret 文件注入）
 
 示例：
@@ -170,14 +175,12 @@ env:
     value: "/var/run/secrets/php/redis-password"
   - name: PHP_RUNTIME_INI_APPEND_FILE
     value: "/etc/php-extra/runtime.ini"
-  - name: CADDY_SERVER_EXTRA_DIRECTIVES_FILE
-    value: "/etc/caddy-extra/server-extra.caddy"
 volumeMounts:
   - name: php-extra
     mountPath: /etc/php-extra
     readOnly: true
   - name: caddy-extra
-    mountPath: /etc/caddy-extra
+    mountPath: /etc/caddy/Caddyfile.d
     readOnly: true
   - name: php-secret
     mountPath: /var/run/secrets/php
@@ -228,7 +231,7 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 - `FRANKENPHP_TAG_84`（默认 `php8.4-bookworm`）
 - `FRANKENPHP_TAG_85`（默认 `php8.5-bookworm`）
 - `PHP_VERSIONS`（默认 `8.3 8.4 8.5`）
-- `PLATFORMS`（默认 `linux/amd64,linux/arm64`）
+- `PLATFORMS`（默认 `linux/amd64`，多平台示例：`linux/amd64,linux/arm64`）
 - `BUILD_OUTPUT`（默认 `--push`）
 - `PHP_EXTENSIONS`（可覆盖 Dockerfile 默认扩展列表）
 
@@ -242,7 +245,9 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 
 - Caddy 主配置：`/etc/caddy/Caddyfile`
 - 额外 Caddy 覆盖：`/etc/caddy/Caddyfile.d/*.caddyfile`
-- 额外 PHP 覆盖：`PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-runtime.d:/custom/php.d`
+- PHP 运行时配置模板：`docker/php-runtime.ini.template`（envsubst 渲染，所有项均可通过环境变量覆盖）
+- 额外 PHP 追加：`PHP_RUNTIME_INI_APPEND_FILE` 或 `PHP_RUNTIME_INI_APPEND`
+- 额外 PHP ini 目录：`PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-runtime.d:/custom/php.d`
 
 ## 已知限制
 
