@@ -10,6 +10,7 @@
 - 保留全量扩展策略（移除 `imap`，FrankenPHP 已知不兼容）
 - 版本拆分构建（`Dockerfile.php83`、`Dockerfile.php84`、`Dockerfile.php85`）
 - 扩展列表拆分配置（`docker/php-extensions/*.list`）
+- 启动时基于环境变量动态生成 `99-runtime-env.ini`
 - 支持 `Caddyfile.d` 和 `PHP_INI_SCAN_DIR` 进行运行时覆盖
 - 支持非 root 运行，同时保留 80/443 监听能力
 
@@ -24,6 +25,111 @@
 - `DEFAULT_HEALTHCHECK_PATH=/__builtin_healthcheck_disabled__`
 - `HEALTHCHECK_PATH=`（留空时 Docker `HEALTHCHECK` 不探测）
 - `GODEBUG=cgocheck=0`
+- `PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-runtime.d`
+
+## 环境变量功能索引
+
+- **服务与路由**
+  - `SERVER_NAME`: Caddy 监听/站点匹配
+  - `SERVER_ROOT`: 应用根目录（默认 `public/`）
+  - `HEALTHCHECK_PATH`: Docker 健康检查探测路径
+  - `DEFAULT_HEALTHCHECK_PATH`: 内置健康端点路径（默认关闭）
+- **FrankenPHP/Caddy**
+  - `FRANKENPHP_CONFIG`: FrankenPHP 运行配置（可切 Worker）
+  - `CADDY_GLOBAL_OPTIONS`: Caddy 全局块注入
+  - `CADDY_EXTRA_CONFIG`: 顶层附加配置注入
+  - `CADDY_SERVER_EXTRA_DIRECTIVES`: server 块附加指令
+  - 以上 4 项均支持 `*_FILE`（例如 `CADDY_SERVER_EXTRA_DIRECTIVES_FILE`）
+- **PHP 运行时**
+  - `PHP_UPLOAD_MAX_FILESIZE` / `PHP_POST_MAX_SIZE` / `PHP_MEMORY_LIMIT`
+  - `PHP_OPCACHE_*` 系列（含 preload / jit）
+  - `PHP_RUNTIME_INI_APPEND_FILE` / `PHP_RUNTIME_INI_APPEND`
+  - `PHP_INI_SCAN_DIR`: 附加 ini 扫描目录
+- **Session**
+  - `PHP_SESSION_REDIS_ENABLED`: 开关（`1/true/on` 启用 Redis）
+  - `PHP_SESSION_REDIS_HOST/PORT/DB/TIMEOUT/PREFIX/AUTH`
+  - `PHP_SESSION_REDIS_SAVE_PATH`: 完整 save_path 覆盖
+  - `PHP_SESSION_REDIS_AUTH_FILE`: 从文件读取密码
+
+## Caddy 配置机制
+
+- 镜像内固定主模板：`/etc/caddy/Caddyfile`
+- 主模板通过占位符读取环境变量：`CADDY_GLOBAL_OPTIONS`、`FRANKENPHP_CONFIG`、`CADDY_EXTRA_CONFIG`、`CADDY_SERVER_EXTRA_DIRECTIVES`
+- 额外覆盖入口：`/etc/caddy/Caddyfile.d/*.caddyfile`
+- 支持 `*_FILE` 方式注入多行配置（如 `CADDY_SERVER_EXTRA_DIRECTIVES_FILE`），便于 K8s ConfigMap/Secret
+
+Early Hints 建议放在应用层（PHP 发送 `103`）：
+
+```php
+header('Link: </app.css>; rel=preload; as=style');
+headers_send(103);
+```
+
+如果确实要在 Caddy 注入额外逻辑，优先挂载 `Caddyfile.d` 片段文件。
+
+## 运行时 PHP 配置
+
+容器启动时会根据环境变量生成 `/tmp/php-runtime.d/99-runtime-env.ini`（优先级高于镜像内默认 `php.ini`），未设置则使用默认值。
+
+常用性能与限制变量：
+
+- `PHP_UPLOAD_MAX_FILESIZE`（默认 `100M`）
+- `PHP_POST_MAX_SIZE`（默认 `100M`）
+- `PHP_MEMORY_LIMIT`（默认 `256M`）
+- `PHP_MAX_EXECUTION_TIME`（默认 `60`）
+- `PHP_REALPATH_CACHE_SIZE`（默认 `4096K`）
+- `PHP_REALPATH_CACHE_TTL`（默认 `600`）
+- `PHP_OPCACHE_ENABLE`（默认 `1`）
+- `PHP_OPCACHE_ENABLE_CLI`（默认 `0`）
+- `PHP_OPCACHE_MEMORY_CONSUMPTION`（默认按 cgroup 内存自动估算）
+- `PHP_OPCACHE_INTERNED_STRINGS_BUFFER`（默认按 cgroup 内存自动估算）
+- `PHP_OPCACHE_MAX_ACCELERATED_FILES`（默认 `65407`）
+- `PHP_OPCACHE_VALIDATE_TIMESTAMPS`（默认 `0`，生产建议保持）
+- `PHP_OPCACHE_REVALIDATE_FREQ`（默认 `0`）
+- `PHP_OPCACHE_SAVE_COMMENTS`（默认 `1`）
+- `PHP_OPCACHE_JIT`（默认 `disable`）
+- `PHP_OPCACHE_JIT_BUFFER_SIZE`（默认 `0`）
+- `PHP_OPCACHE_PRELOAD`（默认空）
+- `PHP_OPCACHE_PRELOAD_USER`（默认 `appuser`）
+- `PHP_RUNTIME_INI_APPEND_FILE`（默认空，挂载文件并追加到运行时 ini）
+- `PHP_RUNTIME_INI_APPEND`（默认空，直接追加 ini 文本）
+
+示例：
+
+```bash
+docker run --rm -p 80:80 \
+  -e PHP_UPLOAD_MAX_FILESIZE=256M \
+  -e PHP_POST_MAX_SIZE=256M \
+  -e PHP_MEMORY_LIMIT=512M \
+  -e PHP_OPCACHE_MEMORY_CONSUMPTION=384 \
+  ghcr.io/leaflownet/php:php8.4
+```
+
+## Session 存储到 Redis
+
+默认 `session.save_handler=files`。开启 Redis：
+
+- `PHP_SESSION_REDIS_ENABLED=1`
+- `PHP_SESSION_REDIS_HOST`（默认 `redis`）
+- `PHP_SESSION_REDIS_PORT`（默认 `6379`）
+- `PHP_SESSION_REDIS_DB`（默认 `0`）
+- `PHP_SESSION_REDIS_AUTH`（可选）
+- `PHP_SESSION_REDIS_PREFIX`（可选）
+- `PHP_SESSION_REDIS_TIMEOUT`（默认 `2.5`）
+- `PHP_SESSION_REDIS_SAVE_PATH`（可选，设置后优先于 host/port 组合）
+- `PHP_SESSION_REDIS_AUTH_FILE`（可选，优先用于 Secret 文件注入）
+
+示例：
+
+```bash
+docker run --rm -p 80:80 \
+  -e PHP_SESSION_REDIS_ENABLED=1 \
+  -e PHP_SESSION_REDIS_HOST=redis.default.svc.cluster.local \
+  -e PHP_SESSION_REDIS_PORT=6379 \
+  -e PHP_SESSION_REDIS_DB=2 \
+  -e PHP_SESSION_REDIS_AUTH=your-password \
+  ghcr.io/leaflownet/php:php8.4
+```
 
 ## 健康检查策略
 
@@ -43,6 +149,47 @@ docker run --rm -p 80:80 \
 ```
 
 Worker 健康检查建议由应用自行提供并通过 `HEALTHCHECK_PATH` 指向应用路由。
+
+## Kubernetes 推荐用法
+
+为避免在 Deployment 里塞大量多行环境变量，建议：
+
+- Caddy 自定义放 `ConfigMap -> /etc/caddy/Caddyfile.d/*.caddyfile`
+- PHP 额外 ini 放 `ConfigMap -> /etc/php-extra/runtime.ini`，并设置 `PHP_RUNTIME_INI_APPEND_FILE=/etc/php-extra/runtime.ini`
+- Redis 密码放 `Secret` 文件，使用 `PHP_SESSION_REDIS_AUTH_FILE`
+
+示例（关键片段）：
+
+```yaml
+env:
+  - name: PHP_SESSION_REDIS_ENABLED
+    value: "1"
+  - name: PHP_SESSION_REDIS_HOST
+    value: "redis.default.svc.cluster.local"
+  - name: PHP_SESSION_REDIS_AUTH_FILE
+    value: "/var/run/secrets/php/redis-password"
+  - name: PHP_RUNTIME_INI_APPEND_FILE
+    value: "/etc/php-extra/runtime.ini"
+  - name: CADDY_SERVER_EXTRA_DIRECTIVES_FILE
+    value: "/etc/caddy-extra/server-extra.caddy"
+volumeMounts:
+  - name: php-extra
+    mountPath: /etc/php-extra
+    readOnly: true
+  - name: caddy-extra
+    mountPath: /etc/caddy-extra
+    readOnly: true
+  - name: php-secret
+    mountPath: /var/run/secrets/php
+    readOnly: true
+```
+
+## Laravel Octane
+
+- 镜像已包含 Octane Worker 必需的 `pcntl` / `posix`（按 PHP 版本扩展清单安装）
+- 默认基础 tag 使用 `php8.3-bookworm` / `php8.4-bookworm` / `php8.5-bookworm`
+- 推荐保持 FrankenPHP 版本 `>= 1.5` 以避免 Octane 启动时尝试二进制升级
+- 可直接使用 `php artisan octane:start --server=frankenphp`
 
 ## 多版本构建与推送
 
@@ -77,9 +224,9 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 可用环境变量：
 
 - `FRANKENPHP_BASE_REPO`（默认 `dunglas/frankenphp`）
-- `FRANKENPHP_TAG_83`（覆盖 `8.3` 基础 tag）
-- `FRANKENPHP_TAG_84`（覆盖 `8.4` 基础 tag）
-- `FRANKENPHP_TAG_85`（覆盖 `8.5` 基础 tag）
+- `FRANKENPHP_TAG_83`（默认 `php8.3-bookworm`）
+- `FRANKENPHP_TAG_84`（默认 `php8.4-bookworm`）
+- `FRANKENPHP_TAG_85`（默认 `php8.5-bookworm`）
 - `PHP_VERSIONS`（默认 `8.3 8.4 8.5`）
 - `PLATFORMS`（默认 `linux/amd64,linux/arm64`）
 - `BUILD_OUTPUT`（默认 `--push`）
@@ -95,7 +242,7 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 
 - Caddy 主配置：`/etc/caddy/Caddyfile`
 - 额外 Caddy 覆盖：`/etc/caddy/Caddyfile.d/*.caddyfile`
-- 额外 PHP 覆盖：`PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/custom/php.d`
+- 额外 PHP 覆盖：`PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-runtime.d:/custom/php.d`
 
 ## 已知限制
 

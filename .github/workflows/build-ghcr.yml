@@ -12,6 +12,7 @@ on:
       - Dockerfile.php85
       - Caddyfile
       - php.ini
+      - docker/entrypoint.sh
       - docker/php-extensions/**
       - .github/workflows/build-ghcr.yml
 

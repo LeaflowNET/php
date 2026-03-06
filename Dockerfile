@@ -1,5 +1,5 @@
 ARG FRANKENPHP_REPO=dunglas/frankenphp
-ARG FRANKENPHP_TAG=1.3-php8.4-bookworm
+ARG FRANKENPHP_TAG=php8.4-bookworm
 
 FROM ${FRANKENPHP_REPO}:${FRANKENPHP_TAG}
 
@@ -11,6 +11,7 @@ ARG IPE_MAKEFLAGS=
 ENV SERVER_NAME=:80
 ENV SERVER_ROOT=public/
 ENV GODEBUG=cgocheck=0
+ENV PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-runtime.d
 ENV DEFAULT_HEALTHCHECK_PATH=/__builtin_healthcheck_disabled__
 ENV HEALTHCHECK_PATH=
 
@@ -37,9 +38,14 @@ RUN set -eux; \
 
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY php.ini /usr/local/etc/php/conf.d/99-custom.ini
+COPY docker/entrypoint.sh /usr/local/bin/runtime-entrypoint
+
+RUN chmod +x /usr/local/bin/runtime-entrypoint
 
 WORKDIR /app
 USER ${APP_USER}
+
+ENTRYPOINT ["runtime-entrypoint"]
 
 EXPOSE 80 443 443/udp
 
