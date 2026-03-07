@@ -20,7 +20,7 @@ COPY docker/php-extensions/php83.list /tmp/php-extensions.list
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends gettext-base libcap2-bin; \
+    apt-get install -y --no-install-recommends gettext-base libcap2-bin unzip p7zip-full; \
     if [ -n "${IPE_PROCESSOR_COUNT}" ]; then export IPE_PROCESSOR_COUNT="${IPE_PROCESSOR_COUNT}"; fi; \
     if [ -n "${IPE_MAKEFLAGS}" ]; then export MAKEFLAGS="${IPE_MAKEFLAGS}"; fi; \
     php_extensions="${PHP_EXTENSIONS:-$(tr '\n' ' ' < /tmp/php-extensions.list)}"; \
