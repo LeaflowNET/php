@@ -263,6 +263,9 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 - ionCube 通过 `zend_extension=` 注入到 FPM/CLI；FrankenPHP 变体不注入 ionCube
 - 该镜像默认仅监听 `80`，设计用于上游反代（Traefik/Nginx Ingress/ALB），不在容器内做 TLS 终结
 - 预留 Nginx 覆盖目录：`/etc/nginx/custom/http.d/*.conf` 与 `/etc/nginx/custom/server.d/*.conf`
+- FPM 镜像支持 `php.ini` 覆盖（可挂载 `conf.d` 文件，或设置 `PHP_INI_SCAN_DIR`）
+- FPM 池参数支持环境变量覆盖（如 `pm.max_children`、`pm.max_requests` 等）
+- Nginx 与 PHP-FPM 日志输出到容器 `stdout/stderr`
 
 示例：
 
@@ -278,6 +281,59 @@ docker run --rm -p 8080:80 \
   -v $(pwd)/nginx-server.d:/etc/nginx/custom/server.d:ro \
   ghcr.io/leaflownet/php:php8.3-nginx-fpm
 ```
+
+示例 `nginx-http.d/real-ip.conf`（按你的上游网关网段调整）：
+
+```nginx
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;
+set_real_ip_from 192.168.0.0/16;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+```
+
+PHP 配置覆盖（推荐挂载额外 ini）：
+
+```bash
+docker run --rm -p 8080:80 \
+  -v $(pwd)/php-extra/99-custom.ini:/etc/php/8.3/fpm/conf.d/99-custom.ini:ro \
+  -v $(pwd)/php-extra/99-custom.ini:/etc/php/8.3/cli/conf.d/99-custom.ini:ro \
+  ghcr.io/leaflownet/php:php8.3-nginx-fpm
+```
+
+也可以用 `PHP_INI_SCAN_DIR` 增加扫描目录：
+
+```bash
+docker run --rm -p 8080:80 \
+  -e PHP_INI_SCAN_DIR="/etc/php/8.3/fpm/conf.d:/custom/php.d" \
+  -v $(pwd)/php-extra:/custom/php.d:ro \
+  ghcr.io/leaflownet/php:php8.3-nginx-fpm
+```
+
+PHP-FPM 池参数覆盖示例：
+
+```bash
+docker run --rm -p 8080:80 \
+  -e PHP_FPM_PM=dynamic \
+  -e PHP_FPM_PM_MAX_CHILDREN=80 \
+  -e PHP_FPM_PM_START_SERVERS=8 \
+  -e PHP_FPM_PM_MIN_SPARE_SERVERS=4 \
+  -e PHP_FPM_PM_MAX_SPARE_SERVERS=16 \
+  -e PHP_FPM_PM_MAX_REQUESTS=1000 \
+  -e PHP_FPM_REQUEST_TERMINATE_TIMEOUT=120s \
+  ghcr.io/leaflownet/php:php8.3-nginx-fpm
+```
+
+支持的 FPM 环境变量：
+
+- `PHP_FPM_PM` (`static` | `dynamic` | `ondemand`)
+- `PHP_FPM_PM_MAX_CHILDREN`
+- `PHP_FPM_PM_START_SERVERS`（`dynamic`）
+- `PHP_FPM_PM_MIN_SPARE_SERVERS`（`dynamic`）
+- `PHP_FPM_PM_MAX_SPARE_SERVERS`（`dynamic`）
+- `PHP_FPM_PM_PROCESS_IDLE_TIMEOUT`（`ondemand`）
+- `PHP_FPM_PM_MAX_REQUESTS`
+- `PHP_FPM_REQUEST_TERMINATE_TIMEOUT`
 
 本地构建该变体：
 

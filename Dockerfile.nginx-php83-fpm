@@ -2,6 +2,7 @@ FROM debian:12-slim
 
 ARG PHP_VERSION=8.3
 ENV PHP_VERSION=${PHP_VERSION}
+ENV PHP_INI_SCAN_DIR=/etc/php/${PHP_VERSION}/cli/conf.d
 
 RUN set -eux; \
     apt-get update; \
@@ -48,7 +49,10 @@ RUN set -eux; \
     printf '%s\n' "zend_extension=${ext_dir}/ioncube_loader_lin_8.3.so" > /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini; \
     ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/fpm/conf.d/00-ioncube.ini; \
     ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/cli/conf.d/00-ioncube.ini; \
-    sed -i 's/;clear_env = no/clear_env = no/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
+    sed -i 's/;clear_env = no/clear_env = no/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf; \
+    sed -i 's|^;error_log = log/php\$|error_log = /proc/self/fd/2|' /etc/php/${PHP_VERSION}/fpm/php-fpm.conf; \
+    sed -i 's|^;access.log = log/\$pool.access.log|access.log = /proc/self/fd/2|' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf; \
+    sed -i 's|^;catch_workers_output = yes|catch_workers_output = yes|' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
 
 RUN set -eux; \
     cat > /etc/nginx/conf.d/00-custom-http-includes.conf <<'EOF'
@@ -83,8 +87,16 @@ server {
 }
 EOF
 
+RUN set -eux; \
+    ln -sf /dev/stdout /var/log/nginx/access.log; \
+    ln -sf /dev/stderr /var/log/nginx/error.log
+
 WORKDIR /var/www/html
+
+COPY docker/nginx-fpm/entrypoint.sh /usr/local/bin/nginx-fpm-entrypoint
+
+RUN chmod +x /usr/local/bin/nginx-fpm-entrypoint
 
 EXPOSE 80
 
-CMD ["/bin/sh", "-c", "php-fpm8.3 -D && nginx -g 'daemon off;'"]
+ENTRYPOINT ["/usr/local/bin/nginx-fpm-entrypoint"]
