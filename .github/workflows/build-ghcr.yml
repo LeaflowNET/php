@@ -11,8 +11,11 @@ on:
       - Dockerfile.php84
       - Dockerfile.php85
       - Dockerfile.nginx-php83-fpm
+      - Dockerfile.apache-php83-fpm
       - Caddyfile
       - docker/entrypoint.sh
+      - docker/nginx-fpm/**
+      - docker/apache-fpm/**
       - docker/php-runtime.ini.template
       - docker/php-extensions/**
       - ioncube/**
@@ -41,6 +44,8 @@ jobs:
             dockerfile: ./Dockerfile.php85
           - php_version: "8.3-nginx-fpm"
             dockerfile: ./Dockerfile.nginx-php83-fpm
+          - php_version: "8.3-apache-fpm"
+            dockerfile: ./Dockerfile.apache-php83-fpm
 
     steps:
       - name: Checkout

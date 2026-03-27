@@ -1,0 +1,101 @@
+FROM debian:12-slim
+
+ARG PHP_VERSION=8.3
+ENV PHP_VERSION=${PHP_VERSION}
+ENV PHP_INI_SCAN_DIR=/etc/php/${PHP_VERSION}/cli/conf.d
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends wget unzip ca-certificates gnupg lsb-release; \
+    wget --no-check-certificate -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg; \
+    echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      apache2 \
+      php${PHP_VERSION}-cli \
+      php${PHP_VERSION}-fpm \
+      php${PHP_VERSION}-bcmath \
+      php${PHP_VERSION}-curl \
+      php${PHP_VERSION}-mbstring \
+      php${PHP_VERSION}-zip \
+      php${PHP_VERSION}-dom \
+      php${PHP_VERSION}-mysql \
+      php${PHP_VERSION}-sqlite3 \
+      php${PHP_VERSION}-redis \
+      php${PHP_VERSION}-pgsql \
+      php${PHP_VERSION}-gd \
+      php${PHP_VERSION}-intl \
+      php${PHP_VERSION}-bz2 \
+      php${PHP_VERSION}-mongodb \
+      php${PHP_VERSION}-memcached \
+      php${PHP_VERSION}-imap \
+      php${PHP_VERSION}-exif \
+      php${PHP_VERSION}-gmp \
+      php${PHP_VERSION}-apcu \
+      php${PHP_VERSION}-opcache; \
+    wget -qO /usr/local/bin/composer https://mirrors.aliyun.com/composer/composer.phar; \
+    chmod +x /usr/local/bin/composer; \
+    mkdir -p /run/php /var/www/html/public /etc/apache2/custom/conf.d /etc/apache2/custom/vhost.d; \
+    chown -R www-data:www-data /run/php /var/www/html; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ioncube/ioncube_loader_lin_8.3.so /tmp/ioncube_loader_lin_8.3.so
+
+RUN set -eux; \
+    ext_dir="$(php -i | sed -n 's|^extension_dir => \(.*\) => .*|\1|p' | head -n1)"; \
+    test -n "${ext_dir}"; \
+    install -m 0644 /tmp/ioncube_loader_lin_8.3.so "${ext_dir}/ioncube_loader_lin_8.3.so"; \
+    rm -f /tmp/ioncube_loader_lin_8.3.so; \
+    printf '%s\n' "zend_extension=${ext_dir}/ioncube_loader_lin_8.3.so" > /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini; \
+    ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/fpm/conf.d/00-ioncube.ini; \
+    ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/cli/conf.d/00-ioncube.ini; \
+    sed -i 's/;clear_env = no/clear_env = no/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf; \
+    sed -i 's|^;error_log = log/php\$|error_log = /proc/self/fd/2|' /etc/php/${PHP_VERSION}/fpm/php-fpm.conf; \
+    sed -i 's|^;access.log = log/\$pool.access.log|access.log = /proc/self/fd/2|' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf; \
+    sed -i 's|^;catch_workers_output = yes|catch_workers_output = yes|' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
+
+RUN set -eux; \
+    a2enmod proxy proxy_fcgi setenvif rewrite headers remoteip; \
+    a2dismod php8.2 php8.3 php8.4 php8.5 || true
+
+RUN set -eux; \
+    cat > /etc/apache2/sites-available/000-default.conf <<'EOF'
+<VirtualHost *:80>
+    ServerName _
+    DocumentRoot /var/www/html/public
+
+    <Directory /var/www/html/public>
+        AllowOverride All
+        Require all granted
+        Options FollowSymLinks
+        DirectoryIndex index.php index.html
+    </Directory>
+
+    IncludeOptional /etc/apache2/custom/vhost.d/*.conf
+
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ /index.php [QSA,L]
+
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php8.3-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+</VirtualHost>
+EOF
+
+RUN set -eux; \
+    printf '%s\n' 'ServerName localhost' 'IncludeOptional /etc/apache2/custom/conf.d/*.conf' > /etc/apache2/conf-available/zz-custom.conf; \
+    a2enconf zz-custom; \
+    ln -sf /dev/stdout /var/log/apache2/access.log; \
+    ln -sf /dev/stderr /var/log/apache2/error.log
+
+WORKDIR /var/www/html
+
+COPY docker/apache-fpm/entrypoint.sh /usr/local/bin/apache-fpm-entrypoint
+
+RUN chmod +x /usr/local/bin/apache-fpm-entrypoint
+
+EXPOSE 80
+
+ENTRYPOINT ["/usr/local/bin/apache-fpm-entrypoint"]

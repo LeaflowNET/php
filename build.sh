@@ -11,7 +11,7 @@ show_help() {
   echo -e "${YELLOW}FrankenPHP 手动串行构建脚本${NC}"
   echo -e "用法: $0 <php-version|all> [仓库地址] [额外 buildx 参数]"
   echo -e ""
-  echo -e "可选版本: 8.3 | 8.4 | 8.5 | 8.3-nginx-fpm | all"
+  echo -e "可选版本: 8.3 | 8.4 | 8.5 | 8.3-nginx-fpm | 8.3-apache-fpm | all"
   echo -e "默认仓库: ghcr.io/leaflownet/php"
   echo -e "默认平台: linux/amd64,linux/arm64"
   echo -e "默认输出: --push"
@@ -82,7 +82,7 @@ if [[ "${BUILD_OUTPUT}" == "--load" ]] && [[ "${PLATFORMS}" == *","* ]]; then
 fi
 
 case "${TARGET_VERSION}" in
-  8.3|8.4|8.5|8.3-nginx-fpm)
+  8.3|8.4|8.5|8.3-nginx-fpm|8.3-apache-fpm)
     VERSIONS=("${TARGET_VERSION}")
     ;;
   all)
@@ -140,6 +140,12 @@ for version in "${VERSIONS[@]}"; do
       frankenphp_tag="-"
       image_tag="${REPO}:php8.3-nginx-fpm"
       build_mode="nginx-fpm"
+      ;;
+    8.3-apache-fpm)
+      dockerfile="Dockerfile.apache-php83-fpm"
+      frankenphp_tag="-"
+      image_tag="${REPO}:php8.3-apache-fpm"
+      build_mode="apache-fpm"
       ;;
   esac
   echo -e "\n${GREEN}=== 开始构建 ${YELLOW}${image_tag}${GREEN} ===${NC}"

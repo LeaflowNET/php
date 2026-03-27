@@ -340,3 +340,43 @@ docker run --rm -p 8080:80 \
 ```bash
 ./build.sh 8.3-nginx-fpm ghcr.io/leaflownet/php
 ```
+
+## Apache2 + PHP-FPM (8.3 + ionCube)
+
+- 额外提供独立 tag：`ghcr.io/leaflownet/php:php8.3-apache-fpm`
+- 内置并启用模块：`rewrite`、`remoteip`、`headers`、`proxy`、`proxy_fcgi`、`setenvif`
+- DocumentRoot 默认：`/var/www/html/public`
+- 预留 Apache 覆盖目录：`/etc/apache2/custom/conf.d/*.conf` 与 `/etc/apache2/custom/vhost.d/*.conf`
+- 支持 `php.ini` 覆盖（挂载 `conf.d` 文件或设置 `PHP_INI_SCAN_DIR`）
+- 支持 `PHP_FPM_*` 环境变量覆盖 FPM 池参数（与 nginx-fpm 变体一致）
+- Apache 与 PHP-FPM 日志输出到容器 `stdout/stderr`
+
+示例：
+
+```bash
+docker run --rm -p 8080:80 ghcr.io/leaflownet/php:php8.3-apache-fpm
+```
+
+反向代理场景可挂载 `remoteip` 配置：
+
+```bash
+docker run --rm -p 8080:80 \
+  -v $(pwd)/apache-conf.d:/etc/apache2/custom/conf.d:ro \
+  -v $(pwd)/apache-vhost.d:/etc/apache2/custom/vhost.d:ro \
+  ghcr.io/leaflownet/php:php8.3-apache-fpm
+```
+
+示例 `apache-conf.d/remoteip.conf`：
+
+```apache
+RemoteIPHeader X-Forwarded-For
+RemoteIPInternalProxy 10.0.0.0/8
+RemoteIPInternalProxy 172.16.0.0/12
+RemoteIPInternalProxy 192.168.0.0/16
+```
+
+本地构建该变体：
+
+```bash
+./build.sh 8.3-apache-fpm ghcr.io/leaflownet/php
+```
