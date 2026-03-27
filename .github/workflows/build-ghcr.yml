@@ -10,10 +10,12 @@ on:
       - Dockerfile.php83
       - Dockerfile.php84
       - Dockerfile.php85
+      - Dockerfile.nginx-php83-fpm
       - Caddyfile
       - docker/entrypoint.sh
       - docker/php-runtime.ini.template
       - docker/php-extensions/**
+      - ioncube/**
       - .github/workflows/build-ghcr.yml
 
 permissions:
@@ -37,6 +39,8 @@ jobs:
             dockerfile: ./Dockerfile.php84
           - php_version: "8.5"
             dockerfile: ./Dockerfile.php85
+          - php_version: "8.3-nginx-fpm"
+            dockerfile: ./Dockerfile.nginx-php83-fpm
 
     steps:
       - name: Checkout

@@ -1,0 +1,90 @@
+FROM debian:12-slim
+
+ARG PHP_VERSION=8.3
+ENV PHP_VERSION=${PHP_VERSION}
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends wget unzip ca-certificates gnupg lsb-release; \
+    wget --no-check-certificate -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg; \
+    echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      nginx \
+      php${PHP_VERSION}-cli \
+      php${PHP_VERSION}-fpm \
+      php${PHP_VERSION}-bcmath \
+      php${PHP_VERSION}-curl \
+      php${PHP_VERSION}-mbstring \
+      php${PHP_VERSION}-zip \
+      php${PHP_VERSION}-dom \
+      php${PHP_VERSION}-mysql \
+      php${PHP_VERSION}-sqlite3 \
+      php${PHP_VERSION}-redis \
+      php${PHP_VERSION}-pgsql \
+      php${PHP_VERSION}-gd \
+      php${PHP_VERSION}-intl \
+      php${PHP_VERSION}-bz2 \
+      php${PHP_VERSION}-mongodb \
+      php${PHP_VERSION}-memcached \
+      php${PHP_VERSION}-imap \
+      php${PHP_VERSION}-exif \
+      php${PHP_VERSION}-gmp \
+      php${PHP_VERSION}-apcu \
+      php${PHP_VERSION}-opcache; \
+    wget -qO /usr/local/bin/composer https://mirrors.aliyun.com/composer/composer.phar; \
+    chmod +x /usr/local/bin/composer; \
+    mkdir -p /run/php /var/www/html/public /etc/nginx/custom/http.d /etc/nginx/custom/server.d; \
+    chown -R www-data:www-data /run/php /var/www/html; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ioncube/ioncube_loader_lin_8.3.so /tmp/ioncube_loader_lin_8.3.so
+
+RUN set -eux; \
+    ext_dir="$(php -i | sed -n 's|^extension_dir => \(.*\) => .*|\1|p' | head -n1)"; \
+    test -n "${ext_dir}"; \
+    install -m 0644 /tmp/ioncube_loader_lin_8.3.so "${ext_dir}/ioncube_loader_lin_8.3.so"; \
+    rm -f /tmp/ioncube_loader_lin_8.3.so; \
+    printf '%s\n' "zend_extension=${ext_dir}/ioncube_loader_lin_8.3.so" > /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini; \
+    ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/fpm/conf.d/00-ioncube.ini; \
+    ln -sf /etc/php/${PHP_VERSION}/mods-available/00-ioncube.ini /etc/php/${PHP_VERSION}/cli/conf.d/00-ioncube.ini; \
+    sed -i 's/;clear_env = no/clear_env = no/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
+
+RUN set -eux; \
+    cat > /etc/nginx/conf.d/00-custom-http-includes.conf <<'EOF'
+include /etc/nginx/custom/http.d/*.conf;
+EOF
+
+RUN set -eux; \
+    cat > /etc/nginx/sites-available/default <<'EOF'
+server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/html/public;
+
+    include /etc/nginx/custom/server.d/*.conf;
+
+    index index.php index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+EOF
+
+WORKDIR /var/www/html
+
+EXPOSE 80
+
+CMD ["/bin/sh", "-c", "php-fpm8.3 -D && nginx -g 'daemon off;'"]

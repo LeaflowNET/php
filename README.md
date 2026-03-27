@@ -9,6 +9,7 @@
 - 镜像内置 `composer`
 - 保留全量扩展策略（移除 `imap`，FrankenPHP 已知不兼容）
 - 版本拆分构建（`Dockerfile.php83`、`Dockerfile.php84`、`Dockerfile.php85`）
+- 额外提供 `php8.3-nginx-fpm` 变体（`Dockerfile.nginx-php83-fpm`，仅此变体内置 ionCube）
 - 扩展列表拆分配置（`docker/php-extensions/*.list`）
 - 启动时基于环境变量动态生成 `99-runtime-env.ini`
 - 支持 `Caddyfile.d` 和 `PHP_INI_SCAN_DIR` 进行运行时覆盖
@@ -253,3 +254,33 @@ IPE_MAKEFLAGS="-j$(nproc)" \
 
 - `imap` 扩展未包含（FrankenPHP 线程模型下不兼容）
 - `swoole` 在 `PHP 8.5` 当前未包含（上游版本约束 `<= 8.4.99`）
+
+## Nginx + PHP-FPM (8.3 + ionCube)
+
+- 该仓库默认产物仍是 FrankenPHP（`php8.3` / `php8.4` / `php8.5`）
+- 额外提供独立 tag：`ghcr.io/leaflownet/php:php8.3-nginx-fpm`
+- 仅 `php8.3-nginx-fpm` 内置 ionCube（来自仓库 `ioncube/ioncube_loader_lin_8.3.so`）
+- ionCube 通过 `zend_extension=` 注入到 FPM/CLI；FrankenPHP 变体不注入 ionCube
+- 该镜像默认仅监听 `80`，设计用于上游反代（Traefik/Nginx Ingress/ALB），不在容器内做 TLS 终结
+- 预留 Nginx 覆盖目录：`/etc/nginx/custom/http.d/*.conf` 与 `/etc/nginx/custom/server.d/*.conf`
+
+示例：
+
+```bash
+docker run --rm -p 8080:80 ghcr.io/leaflownet/php:php8.3-nginx-fpm
+```
+
+Traefik/反向代理场景可挂载自定义配置（如 real ip）：
+
+```bash
+docker run --rm -p 8080:80 \
+  -v $(pwd)/nginx-http.d:/etc/nginx/custom/http.d:ro \
+  -v $(pwd)/nginx-server.d:/etc/nginx/custom/server.d:ro \
+  ghcr.io/leaflownet/php:php8.3-nginx-fpm
+```
+
+本地构建该变体：
+
+```bash
+./build.sh 8.3-nginx-fpm ghcr.io/leaflownet/php
+```

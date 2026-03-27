@@ -11,7 +11,7 @@ show_help() {
   echo -e "${YELLOW}FrankenPHP 手动串行构建脚本${NC}"
   echo -e "用法: $0 <php-version|all> [仓库地址] [额外 buildx 参数]"
   echo -e ""
-  echo -e "可选版本: 8.3 | 8.4 | 8.5 | all"
+  echo -e "可选版本: 8.3 | 8.4 | 8.5 | 8.3-nginx-fpm | all"
   echo -e "默认仓库: ghcr.io/leaflownet/php"
   echo -e "默认平台: linux/amd64,linux/arm64"
   echo -e "默认输出: --push"
@@ -82,7 +82,7 @@ if [[ "${BUILD_OUTPUT}" == "--load" ]] && [[ "${PLATFORMS}" == *","* ]]; then
 fi
 
 case "${TARGET_VERSION}" in
-  8.3|8.4|8.5)
+  8.3|8.4|8.5|8.3-nginx-fpm)
     VERSIONS=("${TARGET_VERSION}")
     ;;
   all)
@@ -120,18 +120,28 @@ for version in "${VERSIONS[@]}"; do
     8.3)
       dockerfile="Dockerfile.php83"
       frankenphp_tag="${FRANKENPHP_TAG_83}"
+      image_tag="${REPO}:php8.3"
+      build_mode="frankenphp"
       ;;
     8.4)
       dockerfile="Dockerfile.php84"
       frankenphp_tag="${FRANKENPHP_TAG_84}"
+      image_tag="${REPO}:php8.4"
+      build_mode="frankenphp"
       ;;
     8.5)
       dockerfile="Dockerfile.php85"
       frankenphp_tag="${FRANKENPHP_TAG_85}"
+      image_tag="${REPO}:php8.5"
+      build_mode="frankenphp"
+      ;;
+    8.3-nginx-fpm)
+      dockerfile="Dockerfile.nginx-php83-fpm"
+      frankenphp_tag="-"
+      image_tag="${REPO}:php8.3-nginx-fpm"
+      build_mode="nginx-fpm"
       ;;
   esac
-
-  image_tag="${REPO}:php${version}"
   echo -e "\n${GREEN}=== 开始构建 ${YELLOW}${image_tag}${GREEN} ===${NC}"
   echo -e "Dockerfile: ${YELLOW}${dockerfile}${NC}"
   echo -e "Base Tag : ${YELLOW}${frankenphp_tag}${NC}"
@@ -139,16 +149,21 @@ for version in "${VERSIONS[@]}"; do
   build_args=(
     --platform "${PLATFORMS}"
     --file "${dockerfile}"
-    --build-arg "FRANKENPHP_REPO=${FRANKENPHP_BASE_REPO}"
-    --build-arg "FRANKENPHP_TAG=${frankenphp_tag}"
-    --build-arg "IPE_PROCESSOR_COUNT=${IPE_PROCESSOR_COUNT}"
   )
 
-  if [[ -n "${PHP_EXTENSIONS}" ]]; then
+  if [[ "${build_mode}" == "frankenphp" ]]; then
+    build_args+=(
+      --build-arg "FRANKENPHP_REPO=${FRANKENPHP_BASE_REPO}"
+      --build-arg "FRANKENPHP_TAG=${frankenphp_tag}"
+      --build-arg "IPE_PROCESSOR_COUNT=${IPE_PROCESSOR_COUNT}"
+    )
+  fi
+
+  if [[ "${build_mode}" == "frankenphp" ]] && [[ -n "${PHP_EXTENSIONS}" ]]; then
     build_args+=(--build-arg "PHP_EXTENSIONS=${PHP_EXTENSIONS}")
   fi
 
-  if [[ -n "${IPE_MAKEFLAGS}" ]]; then
+  if [[ "${build_mode}" == "frankenphp" ]] && [[ -n "${IPE_MAKEFLAGS}" ]]; then
     build_args+=(--build-arg "IPE_MAKEFLAGS=${IPE_MAKEFLAGS}")
   fi
 
